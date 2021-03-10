@@ -1,0 +1,380 @@
+####################################
+####    Passphrase-less SSH     ####
+####################################
+
+## 1. Create ~/.ssh/config on namenode with contents below:
+
+vi ~/.ssh/config
+ 
+Host namenode
+  HostName ec2-18-224-53-207.us-east-2.compute.amazonaws.com
+  User ubuntu
+  IdentityFile ~/.ssh/Hadoop2.pem
+Host datanode1
+  HostName ec2-18-223-107-178.us-east-2.compute.amazonaws.com
+  User ubuntu
+  IdentityFile ~/.ssh/Hadoop2.pem
+Host datanode2
+  HostName ec2-3-135-182-67.us-east-2.compute.amazonaws.com
+  User ubuntu
+  IdentityFile ~/.ssh/Hadoop2.pem
+Host datanode3
+  HostName ec2-18-222-117-243.us-east-2.compute.amazonaws.com
+  User ubuntu
+  IdentityFile ~/.ssh/Hadoop2.pem
+
+## :wq ## To save & quit
+## :q! ## To quit
+ 
+## 2. Copy the *.pem file from local machine to namenode:~/ssh directory. Filezilla can be used.
+
+## 3. Execute following commands on namenode: 
+
+   sudo chmod 600 ~/.ssh/Hadoop2.pem
+   ssh-keygen -f ~/.ssh/id_rsa -t rsa -P ""
+   cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+   cat ~/.ssh/id_rsa.pub | ssh datanode1 'cat >> ~/.ssh/authorized_keys'           (yes)
+   cat ~/.ssh/id_rsa.pub | ssh datanode2 'cat >> ~/.ssh/authorized_keys'           (yes)
+   cat ~/.ssh/id_rsa.pub | ssh datanode3 'cat >> ~/.ssh/authorized_keys'           (yes)
+
+## 4. Try ssh datanode, should connect to the datanodes 
+ssh datanode1
+exit 
+ssh datanode2
+exit
+ssh datanode3
+exit
+
+##############################################################
+####  JDK, Hadoop installation on Namenode and Datanodes  ####
+##############################################################
+
+## 1. Install jdk-8:
+   sudo apt-get update
+   sudo apt-get install openjdk-8-jdk
+
+## 2. Download and install hadoop-2.9.2
+   wget http://apache.mirrors.tds.net/hadoop/common/hadoop-2.9.2/hadoop-2.9.2.tar.gz -P ~/Downloads
+   sudo tar zxvf ~/Downloads/hadoop-* -C /usr/local
+   sudo mv /usr/local/hadoop-* /usr/local/hadoop
+
+## 3. Environmental Variables
+
+   nano ~/.profile
+
+   export JAVA_HOME=/usr
+   export PATH=$PATH:$JAVA_HOME/bin
+   export HADOOP_HOME=/usr/local/hadoop
+   export PATH=$PATH:$HADOOP_HOME/bin
+   export HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop
+   ## ctrl+x to exit  
+   ## y then enter to save changes 
+
+## 4. Hadoop Configurations common on all nodes
+
+### Modify files to edit, so they may be overwritten when copying over updated files w/ FileZilla
+   sudo chmod a+rwx /usr/local/hadoop/etc/hadoop/hadoop-env.sh
+   sudo chmod a+rwx /usr/local/hadoop/etc/hadoop/core-site.xml
+   sudo chmod a+rwx /usr/local/hadoop/etc/hadoop/yarn-site.xml
+
+
+   ##(a) $HADOOP_CONF_DIR/hadoop-env.sh
+
+   ## The java implementation to use.
+   export JAVA_HOME=/usr
+
+   ##(b) $HADOOP_CONF_DIR/core-site.xml
+
+   <configuration>
+   <property>
+     <name>fs.defaultFS</name>
+     <value>hdfs://ec2-18-224-53-207.us-east-2.compute.amazonaws.com:9000</value>
+   </property>
+   </configuration>
+
+   ##(c) $HADOOP_CONF_DIR/yarn-site.xml
+
+    <configuration>
+    <!-- Put site-specific property overrides in this file. -->
+    <property>
+      <name>yarn.nodemanager.aux-services</name>
+      <value>mapreduce_shuffle</value>
+    </property> 
+    <property>
+      <name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
+      <value>org.apache.hadoop.mapred.ShuffleHandler</value>
+    </property>
+    <property>
+      <name>yarn.resourcemanager.hostname</name>
+      <value>ec2-18-224-53-207.us-east-2.compute.amazonaws.com</value>
+    </property>
+    </configuration>
+
+   ##(d) $HADOOP_CONF_DIR/mapred-site.xml
+
+   <configuration>
+   <property>
+     <name>mapreduce.jobtracker.address</name>
+     <value>ec2-18-224-53-207.us-east-2.compute.amazonaws.com:54311</value>
+   </property>
+   <property>
+     <name>mapreduce.framework.name</name>
+     <value>yarn</value>
+   </property>
+   </configuration>
+
+##5. NameNode Specific Configurations
+
+### Modify files to edit, so they may be overwritten when copying over updated files w/ FileZilla
+    sudo chmod a+rwx /usr/local/hadoop/etc/hadoop/
+    sudo chmod a+rwx /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+    sudo chmod a+rwx /usr/local/hadoop/etc/hadoop/slaves
+    sudo chmod a+rwx /usr/local/hadoop/etc/hadoop/masters
+    sudo chmod a+rwx /usr/local/hadoop/
+    sudo chmod a+rwx /usr/
+
+   ##(a) /etc/hadoop/hosts
+
+127.0.0.1 localhost
+ec2-18-224-53-207.us-east-2.compute.amazonaws.com namenode
+ec2-18-223-107-178.us-east-2.compute.amazonaws.com datanode1
+ec2-3-135-182-67.us-east-2.compute.amazonaws.com datanode2
+ec2-18-222-117-243.us-east-2.compute.amazonaws.com datanode3
+
+   ##(b) $HADOOP_CONF_DIR/hdfs-site.xml
+
+  <configuration>
+  <property>
+    <name>dfs.replication</name>
+    <value>2</value>
+  </property>
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file:///usr/local/hadoop/hadoop_data/hdfs/namenode</value>
+  </property>
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>file:///usr/local/hadoop/hadoop_data/hdfs/datanode</value>
+  </property>
+  </configuration>
+
+   ##(c) $HADOOP_CONF_DIR/masters
+
+       namenode
+
+   ##(d) $HADOOP_CONF_DIR/slaves
+
+       datanode1
+       datanode2
+       datanode3
+ 
+   ##(e) Create namenode and datanode directories
+
+       sudo mkdir -p $HADOOP_HOME/hadoop_data/hdfs/namenode
+       sudo mkdir -p $HADOOP_HOME/hadoop_data/hdfs/datanode
+       sudo chmod a+rwx /usr/local/hadoop/hadoop_data/hdfs/namenode
+       sudo chmod a+rwx /usr/local/hadoop/hadoop_data/hdfs/datanode
+
+##6. Datanode Specific Configurations
+
+   ##(a) $HADOOP_CONF_DIR/hdfs-site.xml
+
+  <configuration>
+  <property>
+    <name>dfs.replication</name>
+    <value>2</value>
+  </property>
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file:///usr/local/hadoop/hadoop_data/hdfs/namenode</value>
+  </property>
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>file:///usr/local/hadoop/hadoop_data/hdfs/datanode</value>
+  </property>
+  </configuration>
+ 
+   ##(b) Create datanode directory
+`  
+       sudo mkdir -p $HADOOP_HOME/hadoop_data/hdfs/datanode
+
+
+##7. Start Hadoop Cluster
+	## The below 2 steps are for stopping the cluster 
+	## (1) # $HADOOP_HOME/sbin/stop-all.sh
+	## (2) # $HADOOP_HOME/sbin/mr-jobhistory-daemon.sh stop historyserver 
+	## View health of server with the below link
+	## (3) # http://ec2-18-224-53-207.us-east-2.compute.amazonaws.com:50070/dfshealth.html#tab-overview 
+
+   hdfs namenode -format
+   $HADOOP_HOME/sbin/start-dfs.sh
+   $HADOOP_HOME/sbin/start-yarn.sh
+   $HADOOP_HOME/sbin/mr-jobhistory-daemon.sh start historyserver
+
+
+#####################################
+####  Oozie Installation/Build  #####
+#####################################
+
+## Install Maven:
+
+sudo apt-get install maven
+
+## Download Oozie-4.1.0
+
+wget http://archive.apache.org/dist/oozie/4.1.0/oozie-4.1.0.tar.gz
+
+sudo tar xvzf oozie-4.1.0.tar.gz
+
+cd oozie-4.1.0
+
+sudo bin/mkdistro.sh -DskipTests -Dhadoopversion=2.9.2
+ 
+mkdir ~/oozie-4.1
+
+cp -R distro/target/oozie-4.1.0-distro/oozie-4.1.0/* ~/oozie-4.1
+
+# edit /etc/profile 
+sudo vim /etc/profile
+
+   export OOZIE_VERSION=4.1.0
+   export OOZIE_HOME=/home/ubuntu/oozie-4.1
+   export PATH=$PATH:$OOZIE_HOME/bin
+## :wq - To save & quit
+
+## enable web console for Oozie
+
+## we need ext-*.*.zip library and extjs
+
+cd $OOZIE_HOME
+
+mkdir libext
+
+cp ../oozie-4.1.0/hadooplibs/target/oozie-4.1.0-hadooplibs.tar.gz .
+
+tar -xzvf oozie-4.1.0-hadooplibs.tar.gz
+
+cp oozie-4.1.0/hadooplibs/hadooplib-2.3.0.oozie-4.1.0/* libext
+
+cd libext/
+
+wget http://archive.cloudera.com/gplextras/misc/ext-2.2.zip
+
+## Configure the Hadoop cluster with proxyuser for the Oozie process.
+## The following two properties are required in Hadoop core-site.xml
+
+  <!-- OOZIE -->
+  <property>
+      <name>hadoop.proxyuser.ubuntu.hosts</name>
+      <value>*</value>
+  </property>
+  <property>
+      <name>hadoop.proxyuser.ubuntu.groups</name>
+      <value>*</value>
+  </property>
+
+
+
+###################################
+####  RESTART HADOOP CLUSTER  #####
+###################################
+
+sudo apt-get install unzip
+
+sudo apt-get install zip
+
+oozie-setup.sh prepare-war
+
+## Create Sharelib Directory on HDFS
+
+## first get HDFS info
+hdfs getconf -confKey fs.defaultFS
+
+-->hdfs://ec2-18-224-53-207.us-east-2.compute.amazonaws.com:9000
+
+
+## use the info obtained above
+oozie-setup.sh sharelib create -fs hdfs://ec2-18-224-53-207.us-east-2.compute.amazonaws.com:9000
+
+  setting CATALINA_OPTS="$CATALINA_OPTS -Xmx1024m"
+log4j:WARN No appenders could be found for logger (org.apache.hadoop.util.Shell).
+log4j:WARN Please initialize the log4j system properly.
+log4j:WARN See http://logging.apache.org/log4j/1.2/faq.html#noconfig for more info.
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/home/ubuntu/oozie-4.1/libtools/slf4j-simple-1.6.6.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/home/ubuntu/oozie-4.1/libtools/slf4j-log4j12-1.6.6.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/home/ubuntu/oozie-4.1/libext/slf4j-log4j12-1.6.6.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [org.slf4j.impl.SimpleLoggerFactory]
+the destination path for sharelib is: /user/ubuntu/share/lib/lib_20191214020250
+
+
+## update oozie-site.xml under $OOZIE_HOME/conf
+
+    sudo chmod a+rwx /home/ubuntu/oozie-4.1/conf/oozie-site.xml
+
+<property>
+        <name>oozie.service.HadoopAccessorService.hadoop.configurations</name>
+        <value>*=/usr/local/hadoop/etc/hadoop</value>
+        <description>
+            Comma separated AUTHORITY=HADOOP_CONF_DIR, where AUTHORITY is the HOST:PORT of
+            the Hadoop service (JobTracker, HDFS). The wildcard '*' configuration is
+            used when there is no exact match for an authority. The HADOOP_CONF_DIR contains
+            the relevant Hadoop *-site.xml files. If the path is relative is looked within
+            the Oozie configuration directory; though the path can be absolute (i.e. to point
+            to Hadoop client conf/ directories in the local filesystem.
+        </description>
+    </property>
+
+    <property>
+        <name>oozie.service.WorkflowAppService.system.libpath</name>
+        <value>/user/ubuntu/share/lib</value>
+        <description>
+            System library path to use for workflow applications.
+            This path is added to workflow application if their job properties sets
+            the property 'oozie.use.system.libpath' to true.
+        </description>
+    </property>
+
+
+## Create oozie database 
+ooziedb.sh create -sqlfile oozie.sql -run
+
+## Start Oozie Service
+oozied.sh start
+
+## Verify status of Oozie service
+oozie admin --oozie http://localhost:11000/oozie -status
+## System mode: NORMAL
+
+
+## Compile map reduce java programs
+## Create directory and copy java file into /usr/ubuntu/src - Using FileZilla
+cd /usr/ubuntu/src
+javac -classpath $HADOOP_HOME/share/hadoop/common/hadoop-common-2.9.2.jar:$HADOOP_HOME/share/hadoop/mapreduce/hadoop-mapreduce-client-core-2.9.2.jar:$HADOOP_HOME/share/hadoop/common/lib/commons-cli-1.2.jar -d ./ *.java
+
+## Copy all *.class files into /usr/ubuntu/classfiles - Using FileZilla
+
+## Create the jar file 
+jar -cvf testoozie.jar -C classfiles/ .
+
+## Create /usr/ubuntu/map-reduce - Using FileZilla
+## Create /usr/ubuntu/map-reduce/lib - Using FileZilla
+## Copy job.properties and workflow.xml into /usr/ubuntu/input/map-reduce - Using FileZilla
+## Copy jar file into /usr/ubuntu/input/map-reduce/lib - Using FileZilla
+## Copy Flight data into /usr/ubuntu/input - Using FileZilla
+
+## Copy files into HDFS 
+hdfs dfs -put /usr/ubuntu/classfiles /user/ubuntu
+hdfs dfs -put /usr/ubuntu/src /user/ubuntu
+hdfs dfs -put /usr/ubuntu/input /user/ubuntu
+hdfs dfs -put /usr/ubuntu/map-reduce /user/ubuntu
+hdfs dfs -put /usr/ubuntu/testoozie.jar /user/ubuntu
+
+## Run Job
+oozie job -oozie http://localhost:11000/oozie -config /usr/ubuntu/map-reduce/job.properties -run
+
+## Status & log Check
+oozie job -oozie http://localhost:11000/oozie -info 0000013-191213212850842-oozie-ubun-W
+
+oozie job -oozie http://localhost:11000/oozie -log 0000013-191213212850842-oozie-ubun-W
